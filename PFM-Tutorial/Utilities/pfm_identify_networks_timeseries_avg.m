@@ -1,5 +1,7 @@
-function pfm_identify_networks(C,Ic,MidthickSurfs,Col,Priors,OutFile,OutDir,WorkbenchBinary)
+function pfm_identify_networks_timeseries_avg(C,Ic,MidthickSurfs,Col,Priors,OutFile,OutDir,WorkbenchBinary)
 % cjl; cjl2007@med.cornell.edu;
+% modified JCT; tu.j@ wustl.edu -> get rid of the vertex-to-vertex FC
+% calculation
 rng(44); % for reproducibility.
 
 % make output directory;
@@ -13,28 +15,12 @@ if ischar(C)
     C = ft_read_cifti_mod(C);
 end
 
-% % preallocate;
-% FcPriorWeight = zeros(1,size(Priors.Spatial,2));
-% 
-% % generate prior weights;
-% for i = 1:size(Priors.Spatial,2)
-%     tmp = Priors.Spatial(:,i);
-%     tmp(tmp==0) = [];
-%     FcPriorWeight(i) = skewness(tmp,0);
-% end
-% 
-% % normalize between 0.25 and 1;
-% FcPriorWeight = normalize(FcPriorWeight,0.25,0.75);
-% SpatialPriorWeight = 1 - FcPriorWeight; % inverse;
-
 % count the number of cortical vertices; note: this should be 59412;
 nCorticalVertices = nnz(C.brainstructure==1) + nnz(C.brainstructure==2);
 
 % calculate the functional connectivity matrix;
-m = corr(C.data(1:nCorticalVertices,:)');
-m(eye(size(m,1))==1) = 0; % remove the diagonal;
-m(isnan(m)) = 0; % remove nans
-
+cortical_ts = C.data(1:nCorticalVertices,:);
+nTR = size(cortical_ts,2);
 % read in 
 % infomap
 % communities 
@@ -57,21 +43,25 @@ uCi = unique(nonzeros(Ic.data));
 
 % preallocate functional connectivity of each community
 uCi_FC = zeros(nCorticalVertices,length(uCi)); %
+network_ts = zeros(length(uCi),nTR);
 
 % sweep each of the
 % unique communities
-for i = 1:length(uCi)
+for inet = 1:length(uCi)
     
-    % calculate functional connectivity profile of community "i";
-    uCi_FC(:,i) = nanmean(m(:,Ic.data(1:nCorticalVertices)==uCi(i)),2);
+    % calculate functional connectivity profile of community "i"; - this is
+    % Pearson's r = 0.9916 to the previous method (calculating
+    % vertex-by-vertex connectome then average)
+    network_ts(inet,:) = mean(cortical_ts(Ic.data(1:nCorticalVertices)==uCi(inet),:));
+    uCi_FC(:,inet) = corr(cortical_ts',network_ts(inet,:)');
     
 end
+
 
 % calculate the spatial
 % similarity of FC with priors;
 uCi_rho = corr(uCi_FC,Priors.FC);
 uCi_rho(isnan(uCi_rho)) = 0; % remove any NaNs;
-
 % preallocate variable representing distance of 
 % community spatial locations relative to spatial priors;
 uCi_Spatial = zeros(length(uCi),size(Priors.Spatial,2)); %
@@ -120,8 +110,6 @@ for i = 1:length(uCi)
     
     % sort from best match to worst match;
     [x,y] = sort(uCi_rho(i,:) .* uCi_Spatial(i,:),'Descend'); 
-    % [x,y] = sort( (uCi_rho(ii,:) .* FcPriorWeight) .* (uCi_Spatial(ii,:) .* SpatialPriorWeight) ,'Descend');
-    % notes: x = similarity values, y = index of networks
 
     % log all
     % the info;
@@ -161,7 +149,8 @@ writetable(T,[OutDir '/' OutFile '_NetworkLabels.xls']);
 % write out the temporary cifti file;
 ft_write_cifti_mod([OutDir '/Tmp.dtseries.nii'],O);
 
-% write out the first network;
+% write out the first network; - JCT: somehow workbench errors out if the first
+% file is not separated out? 
 system(['echo ' char(Priors.NetworkLabels{1}) ' > ' OutDir '/LabelListFile.txt ']);
 system(['echo 1 ' num2str(round(Priors.NetworkColors(1,1)*255)) ' ' num2str(round(Priors.NetworkColors(1,2)*255)) ' ' num2str(round(Priors.NetworkColors(1,3)*255)) ' 255 >> ' OutDir '/LabelListFile.txt ']);
 
@@ -197,7 +186,7 @@ ft_write_cifti_mod([OutDir '/Tmp.dtseries.nii'],O);
 
 % make dense label file; remove intermediate files;
 system([WorkbenchBinary ' -cifti-label-import ' OutDir '/Tmp.dtseries.nii ' OutDir '/LabelListFile.txt '...
-OutDir '/' OutFile '_InfoMapCommunities.dlabel.nii -discard-others']);
+OutDir '/' OutFile '_Communities.dlabel.nii -discard-others']);
 system(['rm ' OutDir '/Tmp.dtseries.nii']);
 system(['rm ' OutDir '/LabelListFile.txt']);
 
@@ -217,10 +206,8 @@ for i = 1:length(uCi)
     for ii = 1:length(uCi)
 
         % calculate functional connectivity strength between communities "i" and "ii"
-        tmp = m(Ic.data(1:nCorticalVertices)==uCi(i),Ic.data(1:nCorticalVertices)==uCi(ii));
-        FC(i,ii) = nanmean(tmp(:));
-        O.data(Ic.data==uCi(ii),i) = FC(i,ii);
-        
+            FC(i,ii)= corr(network_ts(i,:)',network_ts(ii,:)'); % - correlation of 0.98 to the averaging FC of each vertex-to-vertex edge method
+            O.data(Ic.data==uCi(ii),i) = FC(i,ii);
     end
     
     % log the network assignment for community "i";
@@ -228,7 +215,7 @@ for i = 1:length(uCi)
     
 end
 
-% write out cifti describing avgerage functional connectivity  between communities;
+% write out cifti describing avgerage functional connectivity between communities;
 ft_write_cifti_mod([OutDir '/' OutFile '_FC_btwn_InfoMapCommunities.dtseries.nii'],O);
 
 % generate some visualizations showing how well the initial labeling has
@@ -281,7 +268,7 @@ end
 Tmp = zeros(10); Tmp(:,1) = 1;
 subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
 [~,sort_idx] = sort(Ci); % sort by network membership
-imagesc(FC(sort_idx,sort_idx)); hold;
+imagesc(FC(sort_idx,sort_idx)); hold; 
 
 % add
 % grid
@@ -300,7 +287,7 @@ colormap(redbluecmap);
 set(H,'position',[1 1 315 315]);
 caxis([-1 1]);
 print(gcf,[OutDir '/' OutFile...
-'_FC_btwn_InfoMapCommunities'],'-dpdf');
+'_FC_btwn_InfoMapCommunities.pdf'],'-dpdf');
 close;
 
 end
