@@ -129,7 +129,7 @@ Output = 'Bipartite_PhysicalCommunities+AlgorithmicLabeling';
 Column = 6; % column 6, representing graph density 0.01% in this example.
 
 % run the network identification algorithm;
-pfm_identify_networks(ConcatenatedCifti,Ic,MidthickSurfs,Column,Priors,Output,PfmDir,WorkbenchBinary);
+pfm_identify_networks(ConcatenatedCifti,Ic,MidthickSurfs,Column,Priors,Output,PfmDir);
 
 %% Step 6: Review algorithmic network assignments, optionally adjust labels manually if needed.
 
