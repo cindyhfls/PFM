@@ -1,77 +1,41 @@
-function pfm_identify_networks(C,Ic,MidthickSurfs,Col,Priors,OutFile,OutDir,WorkbenchBinary)
+function pfm_identify_networks_precalculated(Group,Priors,OutFile,OutDir,WorkbenchBinary,empty_cifti)
 % cjl; cjl2007@med.cornell.edu;
-rng(44); % for reproducibility.
+% modified JCT; tu.j@ wustl.edu -> assume that I already have an network
+% average FC and the Spatial Prior from a group of subjects
+% It can be used for single subject also, where Group.FC is the average
+% network FC for that subject and Group.Spatial will be binary containing ones and zeros. 
+% Group is a structure that is formated in the same way as Priors;
+
+assert(isstruct(Group) & isfield(Group,'Spatial') & isfield(Group,'FC'),'Make sure your Group variable is formatted the same as Priors!')
 
 % make output directory;
 if ~exist(OutDir,'dir')
     mkdir(OutDir);
 end
-
-% read in the 
-% resting-state data
-if ischar(C)
-    C = ft_read_cifti_mod(C);
+if ~exist('empty_cifti','var')
+    try
+        empty_cifti = load('empty_cifti.mat'); % see if that's on the path
+    catch
+        error('Please provide an empty cifti structure file from reading a .dtseries.nii with ft_read_cifti_mod')
+    end
 end
 
-% % preallocate;
-% FcPriorWeight = zeros(1,size(Priors.Spatial,2));
-% 
-% % generate prior weights;
-% for i = 1:size(Priors.Spatial,2)
-%     tmp = Priors.Spatial(:,i);
-%     tmp(tmp==0) = [];
-%     FcPriorWeight(i) = skewness(tmp,0);
-% end
-% 
-% % normalize between 0.25 and 1;
-% FcPriorWeight = normalize(FcPriorWeight,0.25,0.75);
-% SpatialPriorWeight = 1 - FcPriorWeight; % inverse;
+group_Spatial = Group.Spatial;
+group_FC = Group.FC;
 
-% count the number of cortical vertices; note: this should be 59412;
-nCorticalVertices = nnz(C.brainstructure==1) + nnz(C.brainstructure==2);
-
-% calculate the functional connectivity matrix;
-m = corr(C.data(1:nCorticalVertices,:)');
-m(eye(size(m,1))==1) = 0; % remove the diagonal;
-m(isnan(m)) = 0; % remove nans
-
-% read in 
-% infomap
-% communities 
-if ischar(Ic)
-    Ic = ft_read_cifti_mod(Ic); % Ic == infomap communities
-end
-
-% extract
-% graph density
-% of interest ;
-if ~isempty(Col)
-    Ic.data = Ic.data(:,Col);
-end
-
-O = Ic; % preallocate output
-O.data = zeros(size(Ic.data));
+O = empty_cifti; % preallocate output
+O.data = zeros(size(group_FC,1),1);
 
 % unique infomap communities;
-uCi = unique(nonzeros(Ic.data));
+uCi = 1:size(group_FC,2);
 
 % preallocate functional connectivity of each community
-uCi_FC = zeros(nCorticalVertices,length(uCi)); %
-
-% sweep each of the
-% unique communities
-for i = 1:length(uCi)
-    
-    % calculate functional connectivity profile of community "i";
-    uCi_FC(:,i) = nanmean(m(:,Ic.data(1:nCorticalVertices)==uCi(i)),2);
-    
-end
+uCi_FC = group_FC;
 
 % calculate the spatial
 % similarity of FC with priors;
 uCi_rho = corr(uCi_FC,Priors.FC);
 uCi_rho(isnan(uCi_rho)) = 0; % remove any NaNs;
-
 % preallocate variable representing distance of 
 % community spatial locations relative to spatial priors;
 uCi_Spatial = zeros(length(uCi),size(Priors.Spatial,2)); %
@@ -84,7 +48,7 @@ for i = 1:length(uCi)
     for ii = 1:size(Priors.Spatial,2)
       
         % average probability of community "i" belonging to functional network "ii";
-        uCi_Spatial(i,ii) = mean(Priors.Spatial(Ic.data(1:nCorticalVertices)==uCi(i),ii));
+        uCi_Spatial(i,ii) = sum(group_Spatial(:,i).*Priors.Spatial(:,ii))/sum(group_Spatial(:,i));
         
     end
     
@@ -120,8 +84,6 @@ for i = 1:length(uCi)
     
     % sort from best match to worst match;
     [x,y] = sort(uCi_rho(i,:) .* uCi_Spatial(i,:),'Descend'); 
-    % [x,y] = sort( (uCi_rho(ii,:) .* FcPriorWeight) .* (uCi_Spatial(ii,:) .* SpatialPriorWeight) ,'Descend');
-    % notes: x = similarity values, y = index of networks
 
     % log all
     % the info;
@@ -143,15 +105,13 @@ for i = 1:length(uCi)
     
 end
 
-O = Ic; % preallocate output
-O.data = zeros(size(Ic.data));
-
 % sweep through
 % the communities;
+[~,assn] = max(group_Spatial,[],2); % consensus across group by taking the maximum Spatial prob
 for i = 1:length(uCi)
     
     % log the wta network identity;
-    O.data(Ic.data(:,1)==uCi(i),1) = find(strcmp(Priors.NetworkLabels,S.Network{i}));
+    O.data(assn==uCi(i),1) = find(strcmp(Priors.NetworkLabels,S.Network{i}));
     
 end
 
@@ -161,7 +121,8 @@ writetable(T,[OutDir '/' OutFile '_NetworkLabels.xls']);
 % write out the temporary cifti file;
 ft_write_cifti_mod([OutDir '/Tmp.dtseries.nii'],O);
 
-% write out the first network;
+% write out the first network; - JCT: somehow workbench errors out if the first
+% file is not separated out? 
 system(['echo ' char(Priors.NetworkLabels{1}) ' > ' OutDir '/LabelListFile.txt ']);
 system(['echo 1 ' num2str(round(Priors.NetworkColors(1,1)*255)) ' ' num2str(round(Priors.NetworkColors(1,2)*255)) ' ' num2str(round(Priors.NetworkColors(1,3)*255)) ' 255 >> ' OutDir '/LabelListFile.txt ']);
 
@@ -175,38 +136,21 @@ end
 
 % make dense label file + network borders;
 system([WorkbenchBinary ' -cifti-label-import ' OutDir '/Tmp.dtseries.nii ' OutDir '/LabelListFile.txt ' OutDir '/' OutFile '.dlabel.nii -discard-others']);
-system([WorkbenchBinary ' -cifti-label-to-border ' OutDir '/' OutFile '.dlabel.nii -border ' MidthickSurfs{1} ' ' OutDir '/' OutFile '.L.border']); % LH
-system([WorkbenchBinary ' -cifti-label-to-border ' OutDir '/' OutFile '.dlabel.nii -border ' MidthickSurfs{2} ' ' OutDir '/' OutFile '.R.border']); % RH
-
-O = Ic; % preallocate output;
-O.data = zeros(size(O.data,1),size(uCi_FC,2)); % blank slate
-O.data(1:nCorticalVertices,:) = uCi_FC; % log community FC profiles
-ft_write_cifti_mod([OutDir '/' OutFile '_FC_WholeBrain.dtseries.nii'],O);
-
-O = Ic; % preallocate output;
-O.data = zeros(size(O.data,1),length(uCi)); 
-
-% sweep through
-% the communities;
-for i = 1:length(uCi)
-    O.data(Ic.data==uCi(i),i) = find(strcmp(Priors.NetworkLabels,S.Network{i}));
-end
-
-% write out the communities
-ft_write_cifti_mod([OutDir '/Tmp.dtseries.nii'],O);
 
 % make dense label file; remove intermediate files;
 system([WorkbenchBinary ' -cifti-label-import ' OutDir '/Tmp.dtseries.nii ' OutDir '/LabelListFile.txt '...
-OutDir '/' OutFile '_InfoMapCommunities.dlabel.nii -discard-others']);
+OutDir '/' OutFile '_Communities.dlabel.nii -discard-others']);
 system(['rm ' OutDir '/Tmp.dtseries.nii']);
 system(['rm ' OutDir '/LabelListFile.txt']);
 
-O = Ic; % preallocate output;
 O.data = zeros(size(O.data,1),length(uCi)); 
 
 % preallocate;
-FC = zeros(length(uCi));
+FCsim = zeros(length(uCi));
 Ci = zeros(length(uCi),1);
+
+% Since we don't have the time series, let's calculate the FC similarity
+% instead (which is not exactly the same but same networks should have similar FC profiles too)
 
 % sweep infomap
 % communities
@@ -217,10 +161,8 @@ for i = 1:length(uCi)
     for ii = 1:length(uCi)
 
         % calculate functional connectivity strength between communities "i" and "ii"
-        tmp = m(Ic.data(1:nCorticalVertices)==uCi(i),Ic.data(1:nCorticalVertices)==uCi(ii));
-        FC(i,ii) = nanmean(tmp(:));
-        O.data(Ic.data==uCi(ii),i) = FC(i,ii);
-        
+            FCsim(i,ii)= corr(uCi_FC(:,i),uCi_FC(:,ii)); 
+            O.data(assn ==uCi(ii),i) = FCsim(i,ii);
     end
     
     % log the network assignment for community "i";
@@ -228,11 +170,12 @@ for i = 1:length(uCi)
     
 end
 
-% write out cifti describing avgerage functional connectivity  between communities;
-ft_write_cifti_mod([OutDir '/' OutFile '_FC_btwn_InfoMapCommunities.dtseries.nii'],O);
+% write out cifti describing avgerage functional connectivity between communities;
+ft_write_cifti_mod([OutDir '/' OutFile '_FCsim_btwn_Communities.dtseries.nii'],O);
 
-% generate some visualizations showing how well the initial labeling has
+%% generate some visualizations showing how well the initial labeling has
 % separated communities into clusters with similar functional connectivity
+[~,sort_idx] = sort(Ci); % sort by network membership
 
 H = figure; % prellocate parent figure (these are hard set parameters);
 subaxis(10,10,1:10:81,'MB',0.005,'MT',0.095,'ML',0.05,'MR',0.05); % left subplot
@@ -247,18 +190,39 @@ for i = 1:size(Priors.Spatial,2)
     PercentageOfNodes(i) = sum(Ci==i)/(length(Ci));
 end
 
-% create a stacked bar graph where colors indicate 
-% network membership of nodes in the functional connectivity matrix
-Tmp = bar([flip(PercentageOfNodes) ; nan(size(PercentageOfNodes))],"stacked"); % NaN work around not needed for matlab 2019b and later;
-xlim([0.9 1.1]); % these values work okay on scully;
-ylim([0 sum(PercentageOfNodes)]);
-axis('off');
+% JCT: instead of plotting the Prior network colors x Prior network colors,
+% let's do Group network colors x Prior network colors, unless that does
+% not exist
+if isfield(Group,'NetworkColors')
+    sorted_colors = Group.NetworkColors(sort_idx,:);
+    GroupPct = repelem(1/size(group_FC,2),size(group_FC,2));
+    % create a stacked bar graph where colors indicate 
+    % network membership of nodes in the functional connectivity matrix
+    Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+    xlim([0.9 1.1]); % these values work okay on scully;
+    ylim([0 sum(GroupPct)]);
+    axis('off');
+    
+    % sweep through
+    % the networks 
+    for i = 1:size(group_FC,2)
+        Idx = (size(group_FC,2)+1)-i;
+        Tmp(i).FaceColor = sorted_colors(Idx,:);
+    end
+else
+    % create a stacked bar graph where colors indicate 
+    % network membership of nodes in the functional connectivity matrix
+    Tmp = bar([flip(PercentageOfNodes) ; nan(size(PercentageOfNodes))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+    xlim([0.9 1.1]); % these values work okay on scully;
+    ylim([0 sum(PercentageOfNodes)]);
+    axis('off');
 
-% sweep through
-% the networks 
-for i = 1:size(Priors.Spatial,2)
-    Idx = (size(Priors.Spatial,2)+1)-i;
-    Tmp(i).FaceColor = Priors.NetworkColors(Idx,:);
+    % sweep through
+    % the networks 
+    for i = 1:size(Priors.Spatial,2)
+        Idx = (size(Priors.Spatial,2)+1)-i;
+        Tmp(i).FaceColor = Priors.NetworkColors(Idx,:);
+    end
 end
 
 % bottom subplot;
@@ -280,8 +244,7 @@ end
 % matrix (sorted by network);
 Tmp = zeros(10); Tmp(:,1) = 1;
 subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
-[~,sort_idx] = sort(Ci); % sort by network membership
-imagesc(FC(sort_idx,sort_idx)); hold;
+imagesc(FCsim(sort_idx,sort_idx)); hold; 
 
 % add
 % grid
@@ -300,7 +263,7 @@ colormap(redbluecmap);
 set(H,'position',[1 1 315 315]);
 caxis([-1 1]);
 print(gcf,[OutDir '/' OutFile...
-'_FC_btwn_InfoMapCommunities'],'-dpdf');
+'_FCsim_btwn_Communities.png'],'-dpng','-r300');
 close;
 
 end
