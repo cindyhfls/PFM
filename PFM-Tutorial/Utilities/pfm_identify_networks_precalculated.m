@@ -266,6 +266,33 @@ print(gcf,[OutDir '/' OutFile...
 '_FCsim_btwn_Communities.png'],'-dpng','-r300');
 close;
 
+%% Plot legend
+nCi = length(Ci);
+figure('Units','inches','position',[10 10 4 6])%[10 10 5,3]);%[10 10 5 2]
+h = gscatter(ones(1,nCi),ones(1,nCi),Group.NetworkLabels(sort_idx),Group.NetworkColors(sort_idx,:),'s',50);
+for i = 1:nCi
+    set(h(i),'Color','k','MarkerFaceColor',Group.NetworkColors(sort_idx(i),:));
+end
+legend(Group.NetworkLabels(sort_idx),'interpreter','none','FontSize',10,'location','best','Orientation','horizontal','NumColumns',1);
+legend('boxoff')
+xlim([10,11]);
+axis('off')
+print(gcf,[OutDir '/networks_Legend.png'],'-dpng','-r300');
+close
+%% Plot legend
+[uid] = unique(Ci);
+nCi = length(uid);
+figure('Units','inches','position',[10 10 5 2])%[10 10 5,3]);%[10 10 5 2]
+h = gscatter(ones(1,nCi),ones(1,nCi),Priors.NetworkLabels(uid),Priors.NetworkColors(uid,:),'s',50);
+for i = 1:nCi
+    set(h(i),'Color','k','MarkerFaceColor',Priors.NetworkColors(uid(i),:));
+end
+legend(Priors.NetworkLabels(uid),'interpreter','none','FontSize',10,'location','best','Orientation','horizontal','NumColumns',2);
+legend('boxoff')
+xlim([10,11]);
+axis('off')
+print(gcf,[OutDir '/networks_Legend.png'],'-dpng','-r300');
+close
 end
 
 % subfunctions
