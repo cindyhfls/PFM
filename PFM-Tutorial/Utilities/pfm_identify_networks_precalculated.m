@@ -49,7 +49,8 @@ for i = 1:length(uCi)
       
         % average probability of community "i" belonging to functional network "ii";
         uCi_Spatial(i,ii) = sum(group_Spatial(:,i).*Priors.Spatial(:,ii))/sum(group_Spatial(:,i));
-        
+%         uCi_Spatial(i,ii) = sum(group_Spatial(:,i).*Priors.Spatial(:,ii))/sum(Priors.Spatial(:,ii));
+     
     end
     
 end
@@ -145,7 +146,7 @@ system(['rm ' OutDir '/LabelListFile.txt']);
 
 O.data = zeros(size(O.data,1),length(uCi)); 
 
-% preallocate;
+%% preallocate;
 FCsim = zeros(length(uCi));
 Ci = zeros(length(uCi),1);
 
@@ -173,6 +174,194 @@ end
 % write out cifti describing avgerage functional connectivity between communities;
 ft_write_cifti_mod([OutDir '/' OutFile '_FCsim_btwn_Communities.dtseries.nii'],O);
 
+%% Plot current FC to Prior FC similarity
+[~,sort_idx] = sort(Ci); % sort by network membership
+H = figure; % prellocate parent figure (these are hard set parameters);
+subaxis(10,10,1:10:81,'MB',0.005,'MT',0.095,'ML',0.05,'MR',0.05); % left subplot
+
+% preallocate variable that controls 
+% size of network representation in stacked bar;
+PercentageOfNodes = repelem(1/size(Priors.Spatial,2),size(Priors.Spatial,2));
+
+% JCT: instead of plotting the Prior network colors x Prior network colors,
+% let's do Group network colors x Group network colors
+sorted_colors = Group.NetworkColors(sort_idx,:);
+GroupPct = repelem(1/size(group_FC,2),size(group_FC,2));
+% create a stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+xlim([0.9 1.1]); % these values work okay on scully;
+ylim([0 sum(GroupPct)]);
+axis('off');
+
+% sweep through
+% the networks 
+for i = 1:size(group_FC,2)
+    Idx = (size(group_FC,2)+1)-i;
+    Tmp(i).FaceColor = sorted_colors(Idx,:);
+end
+
+% bottom subplot;
+subaxis(10,10,92:1:100,'MB',0.05,'MT',0.05,'ML',0,'MR',0.05);
+
+% create another stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = barh([PercentageOfNodes ; nan(size(PercentageOfNodes))],"stacked");
+ylim([0.9 1.1]);
+xlim([0 sum(PercentageOfNodes)]);
+axis('off');
+% sweep throughthe networks; 
+for i = 1:size(Priors.Spatial,2)
+    Tmp(i).FaceColor = Priors.NetworkColors(i,:);
+end
+
+% plot the functional connectivity 
+% matrix (sorted by network);
+Tmp = zeros(10); Tmp(:,1) = 1;
+subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
+imagesc(uCi_rho(sort_idx,:)); hold; 
+
+% add grid
+count = 0;
+for i = 1:size(Priors.Spatial,2)-1
+  count = count + 1;  
+  vline(count+0.5,'k');
+end
+count = 0;
+for i = 1:size(group_FC,2)
+    count = count+1;
+    hline(count+0.5,'k');
+end
+
+% make the plot pretty;
+set(gca,'TickLength',[0 0])
+colormap(redbluecmap);
+set(H,'position',[1 1 315 315]);
+caxis([-1 1]);
+xticks([]);yticks([]);
+print(gcf,[OutDir '/' OutFile...
+'_FCsim_btwn_Communities_and_Priors.png'],'-dpng','-r300');
+% close;
+%% Plot current spatial to Prior spatial similarity
+H = figure; % prellocate parent figure (these are hard set parameters);
+subaxis(10,10,1:10:81,'MB',0.005,'MT',0.095,'ML',0.05,'MR',0.05); % left subplot
+
+% create a stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+xlim([0.9 1.1]); % these values work okay on scully;
+ylim([0 sum(GroupPct)]);
+axis('off');
+
+% sweep through
+% the networks 
+for i = 1:size(group_FC,2)
+    Idx = (size(group_FC,2)+1)-i;
+    Tmp(i).FaceColor = sorted_colors(Idx,:);
+end
+
+% bottom subplot;
+subaxis(10,10,92:1:100,'MB',0.05,'MT',0.05,'ML',0,'MR',0.05);
+
+% create another stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = barh([PercentageOfNodes ; nan(size(PercentageOfNodes))],"stacked");
+ylim([0.9 1.1]);
+xlim([0 sum(PercentageOfNodes)]);
+axis('off');
+% sweep throughthe networks; 
+for i = 1:size(Priors.Spatial,2)
+    Tmp(i).FaceColor = Priors.NetworkColors(i,:);
+end
+
+% plot the functional connectivity 
+% matrix (sorted by network);
+Tmp = zeros(10); Tmp(:,1) = 1;
+subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
+imagesc(uCi_Spatial(sort_idx,:)); hold; 
+
+% add grid
+count = 0;
+for i = 1:size(Priors.Spatial,2)-1
+  count = count + 1;  
+  vline(count+0.5,'k');
+end
+count = 0;
+for i = 1:size(group_FC,2)
+    count = count+1;
+    hline(count+0.5,'k');
+end
+
+% make the plot pretty;
+set(gca,'TickLength',[0 0])
+colormap(redbluecmap);
+set(H,'position',[1 1 315 315]);
+caxis([-1 1]);
+xticks([]);yticks([]);
+% colorbar;
+print(gcf,[OutDir '/' OutFile...
+'_Spatialsim_btwn_Communities_and_Priors.png'],'-dpng','-r300');
+% close;
+%% Plot current combined to Prior combined similarity
+H = figure; % prellocate parent figure (these are hard set parameters);
+subaxis(10,10,1:10:81,'MB',0.005,'MT',0.095,'ML',0.05,'MR',0.05); % left subplot
+
+% create a stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+xlim([0.9 1.1]); % these values work okay on scully;
+ylim([0 sum(GroupPct)]);
+axis('off');
+
+% sweep through
+% the networks 
+for i = 1:size(group_FC,2)
+    Idx = (size(group_FC,2)+1)-i;
+    Tmp(i).FaceColor = sorted_colors(Idx,:);
+end
+
+% bottom subplot;
+subaxis(10,10,92:1:100,'MB',0.05,'MT',0.05,'ML',0,'MR',0.05);
+
+% create another stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = barh([PercentageOfNodes ; nan(size(PercentageOfNodes))],"stacked");
+ylim([0.9 1.1]);
+xlim([0 sum(PercentageOfNodes)]);
+axis('off');
+% sweep throughthe networks; 
+for i = 1:size(Priors.Spatial,2)
+    Tmp(i).FaceColor = Priors.NetworkColors(i,:);
+end
+
+% plot the functional connectivity 
+% matrix (sorted by network);
+Tmp = zeros(10); Tmp(:,1) = 1;
+subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
+imagesc(uCi_rho(sort_idx,:).*uCi_Spatial(sort_idx,:)); hold; 
+
+% add grid
+count = 0;
+for i = 1:size(Priors.Spatial,2)-1
+  count = count + 1;  
+  vline(count+0.5,'k');
+end
+count = 0;
+for i = 1:size(group_FC,2)
+    count = count+1;
+    hline(count+0.5,'k');
+end
+
+% make the plot pretty;
+set(gca,'TickLength',[0 0])
+colormap(redbluecmap);
+set(H,'position',[1 1 315 315]);
+caxis([-1 1]);
+xticks([]);yticks([]);
+% colorbar;
+print(gcf,[OutDir '/' OutFile...
+'_Combinedsim_btwn_Communities_and_Priors.png'],'-dpng','-r300');
+% close;
 %% generate some visualizations showing how well the initial labeling has
 % separated communities into clusters with similar functional connectivity
 [~,sort_idx] = sort(Ci); % sort by network membership
@@ -191,38 +380,21 @@ for i = 1:size(Priors.Spatial,2)
 end
 
 % JCT: instead of plotting the Prior network colors x Prior network colors,
-% let's do Group network colors x Prior network colors, unless that does
-% not exist
-if isfield(Group,'NetworkColors')
-    sorted_colors = Group.NetworkColors(sort_idx,:);
-    GroupPct = repelem(1/size(group_FC,2),size(group_FC,2));
-    % create a stacked bar graph where colors indicate 
-    % network membership of nodes in the functional connectivity matrix
-    Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
-    xlim([0.9 1.1]); % these values work okay on scully;
-    ylim([0 sum(GroupPct)]);
-    axis('off');
-    
-    % sweep through
-    % the networks 
-    for i = 1:size(group_FC,2)
-        Idx = (size(group_FC,2)+1)-i;
-        Tmp(i).FaceColor = sorted_colors(Idx,:);
-    end
-else
-    % create a stacked bar graph where colors indicate 
-    % network membership of nodes in the functional connectivity matrix
-    Tmp = bar([flip(PercentageOfNodes) ; nan(size(PercentageOfNodes))],"stacked"); % NaN work around not needed for matlab 2019b and later;
-    xlim([0.9 1.1]); % these values work okay on scully;
-    ylim([0 sum(PercentageOfNodes)]);
-    axis('off');
+% let's do Group network colors x Group network colors
+sorted_colors = Group.NetworkColors(sort_idx,:);
+GroupPct = repelem(1/size(group_FC,2),size(group_FC,2));
+% create a stacked bar graph where colors indicate 
+% network membership of nodes in the functional connectivity matrix
+Tmp = bar([flip(GroupPct) ; nan(size(GroupPct))],"stacked"); % NaN work around not needed for matlab 2019b and later;
+xlim([0.9 1.1]); % these values work okay on scully;
+ylim([0 sum(GroupPct)]);
+axis('off');
 
-    % sweep through
-    % the networks 
-    for i = 1:size(Priors.Spatial,2)
-        Idx = (size(Priors.Spatial,2)+1)-i;
-        Tmp(i).FaceColor = Priors.NetworkColors(Idx,:);
-    end
+% sweep through
+% the networks 
+for i = 1:size(group_FC,2)
+    Idx = (size(group_FC,2)+1)-i;
+    Tmp(i).FaceColor = sorted_colors(Idx,:);
 end
 
 % bottom subplot;
@@ -230,15 +402,23 @@ subaxis(10,10,92:1:100,'MB',0.05,'MT',0.05,'ML',0,'MR',0.05);
 
 % create another stacked bar graph where colors indicate 
 % network membership of nodes in the functional connectivity matrix
-Tmp = barh([PercentageOfNodes ; nan(size(PercentageOfNodes))],"stacked");
-ylim([0.9 1.1]);
-xlim([0 sum(PercentageOfNodes)]);
-axis('off');
-
+% Tmp = barh([PercentageOfNodes ; nan(size(PercentageOfNodes))],"stacked");
+% ylim([0.9 1.1]);
+% xlim([0 sum(PercentageOfNodes)]);
+% axis('off');
 % sweep throughthe networks; 
-for i = 1:size(Priors.Spatial,2)
-    Tmp(i).FaceColor = Priors.NetworkColors(i,:);
+% for i = 1:size(Priors.Spatial,2)
+%     Tmp(i).FaceColor = Priors.NetworkColors(i,:);
+% end
+
+Tmp = barh([GroupPct ; nan(size(GroupPct))],"stacked");
+ylim([0.9 1.1]);
+xlim([0 sum(GroupPct)]);
+axis('off');
+for i = 1:size(group_FC,2)
+    Tmp(i).FaceColor = sorted_colors(i,:);
 end
+
 
 % plot the functional connectivity 
 % matrix (sorted by network);
@@ -246,8 +426,7 @@ Tmp = zeros(10); Tmp(:,1) = 1;
 subaxis(10,10,find(Tmp==0),'MB',0.1,'MT',0,'ML',0.1,'MR',0.05);
 imagesc(FCsim(sort_idx,sort_idx)); hold; 
 
-% add
-% grid
+% add grid
 count = 0;
 for i = 1:size(Priors.Spatial,2)-1
   count = count + length(find(Ci==i));  
@@ -257,16 +436,16 @@ end
 
 % make the plot pretty;
 set(gca,'TickLength',[0 0])
-xticklabels('');
-yticklabels('');
 colormap(redbluecmap);
 set(H,'position',[1 1 315 315]);
 caxis([-1 1]);
+xticks([]);yticks([]);
 print(gcf,[OutDir '/' OutFile...
 '_FCsim_btwn_Communities.png'],'-dpng','-r300');
 close;
 
 %% Plot legend
+close all
 nCi = length(Ci);
 figure('Units','inches','position',[10 10 4 6])%[10 10 5,3]);%[10 10 5 2]
 h = gscatter(ones(1,nCi),ones(1,nCi),Group.NetworkLabels(sort_idx),Group.NetworkColors(sort_idx,:),'s',50);
@@ -278,8 +457,9 @@ legend('boxoff')
 xlim([10,11]);
 axis('off')
 print(gcf,[OutDir '/networks_Legend.png'],'-dpng','-r300');
-close
+
 %% Plot legend
+close all
 [uid] = unique(Ci);
 nCi = length(uid);
 figure('Units','inches','position',[10 10 5 2])%[10 10 5,3]);%[10 10 5 2]
@@ -291,8 +471,9 @@ legend(Priors.NetworkLabels(uid),'interpreter','none','FontSize',10,'location','
 legend('boxoff')
 xlim([10,11]);
 axis('off')
-print(gcf,[OutDir '/networks_Legend.png'],'-dpng','-r300');
-close
+print(gcf,[OutDir '/networks_Legend2.png'],'-dpng','-r300');
+
+
 end
 
 % subfunctions
